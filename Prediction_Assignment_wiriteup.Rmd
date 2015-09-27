@@ -1,0 +1,156 @@
+---
+title: "Prediction_Assignment_Writeup"
+output: html_document
+date: '`r Sys.Date()`'
+---
+```{r, message=F, warning=F}
+library(caret)
+library(rpart)
+library(rattle)
+library(randomForest)
+library(knitr)
+
+```
+#Project
+##Project Introduction
+###Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+###Data
+The training data for this project are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+###Goal
+The goal of your project is to predict the manner in which they did the exercise. This is the “classe” variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+##Getting And Loading The Data
+
+```{r,cache=FALSE}
+set.seed(12345)
+
+trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+training <- read.csv(url(trainUrl), na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url(testUrl), na.strings=c("NA","#DIV/0!",""))
+
+colnames_train <- colnames(training)
+
+```
+
+##Cleaning The Data
+The first step was to clean the data from all kind of missing values and columns that may be irrelvant to prediction (i.e - near zero variance columns)
+###Removing Columns With NAs
+
+```{r}
+# Count the number of non-NAs in each col.
+nonNAs <- function(x) {
+    as.vector(apply(x, 2, function(x) length(which(!is.na(x)))))
+}
+
+# Build vector of missing data or NA columns to drop.
+colcnts <- nonNAs(training)
+drops <- c()
+for (cnt in 1:length(colcnts)) {
+    if (colcnts[cnt] < nrow(training)) {
+        drops <- c(drops, colnames_train[cnt])
+    }
+}
+
+```
+###Removing Irrelevant Columns
+These columns contains irrelvant information for the prediction algorithem.
+
+```{r}
+
+# Drop NA data and the first 7 columns as they're unnecessary for predicting.
+training <- training[,!(names(training) %in% drops)]
+training <- training[,8:length(colnames(training))]
+
+testing <- testing[,!(names(testing) %in% drops)]
+testing <- testing[,8:length(colnames(testing))]
+
+```
+###Show Remaining Columns Training vs. Testing
+
+```{r}
+
+# Show remaining columns training.
+colnames(training)
+
+# Show remaining columns testing
+colnames(testing)
+
+```
+
+###Removing Columns With Near Zero Variance 
+
+```{r}
+print(nearZeroVar(training, saveMetrics=TRUE))
+
+```
+No headers with nzr were found.
+
+##Partioning The Training Set
+
+```{r}
+
+set.seed(666)
+inTrain <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+df_training <- training[inTrain,]
+df_testing <- training[-inTrain,]
+
+```
+
+##Prediction With Decision Tree
+
+```{r}
+
+modFitA <- rpart(classe ~ ., data=df_training, method="class")
+fancyRpartPlot(modFitA)
+predictionsA <- predict(modFitA, df_testing, type = "class")
+confusionMatrix(predictionsA, df_testing$classe)
+
+
+```
+
+The accuracy is not good enough 72% therefore I also tried Random forest algo to see if we can find better prediction. 
+
+##Prediction With Random Forest
+
+```{r}
+
+set.seed(666)
+modFitB <- randomForest(classe ~. , data=df_training)
+plot(modFitB)
+predictionsB <- predict(modFitB, df_testing, type = "class")
+confusionMatrix(predictionsB, df_testing$classe)
+
+```
+
+Random forest yield better results with 99% accuracy!
+
+##Assignment Submission & Result Prediction
+Random Forests gave an Accuracy on the training dataset of 99.2%, which was more accurate that what I got from the Decision Tree with 72.05%. The expected out-of-sample error is 100-99.2 = 0.8%.
+
+```{r}
+
+predictionsTest <- predict(modFitB, testing, type = "class")
+
+predictionsTest
+
+pml_write_files = function(x){
+    n = length(x)
+    for(i in 1:n){
+        filename = paste0("problem_id_",i,".txt")
+        write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+    }
+}
+
+pml_write_files(predictionsTest)
+```
+
+
